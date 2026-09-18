@@ -41,10 +41,29 @@ jobs:
           path: output/report-*.html
           retention-days: 7
 
+      - name: Check secrets
+        run: |
+          echo "Checking secrets configuration..."
+          if [ -z "${{ secrets.RESEND_API_KEY }}" ]; then
+            echo "WARNING: RESEND_API_KEY is not set"
+          else
+            echo "RESEND_API_KEY is configured (hidden)"
+          fi
+          if [ -z "${{ secrets.EMAIL_TO }}" ]; then
+            echo "WARNING: EMAIL_TO is not set"
+          else
+            echo "EMAIL_TO is configured (hidden)"
+          fi
+
       - name: Send email with Resend API
         run: |
           if [ -z "${{ secrets.RESEND_API_KEY }}" ]; then
             echo "RESEND_API_KEY not set, skipping email"
+            exit 0
+          fi
+
+          if [ -z "${{ secrets.EMAIL_TO }}" ]; then
+            echo "EMAIL_TO not set, skipping email"
             exit 0
           fi
 

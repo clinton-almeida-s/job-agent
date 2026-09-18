@@ -39,7 +39,7 @@ jobs:
           retention-days: 7
 
       - name: Send email with Resend API
-        if: ${{ secrets.RESEND_API_KEY != '' && secrets.EMAIL_TO != '' }}
+        if: ${{ secrets.RESEND_API_KEY != '' }}
         run: |
           echo "Sending email via Resend..."
           RESPONSE=$(curl -s -X POST https://api.resend.com/emails \

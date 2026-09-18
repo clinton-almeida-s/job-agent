@@ -7,13 +7,14 @@ const profile = require('../profile.json');
 
 // ── scoring constants ─────────────────────────────────────────────────────────
 
-const TITLE_MATCH_SCORE     = 40;   // job title matches a target title (increased!)
-const REQUIRED_KW_SCORE     = 15;   // per required keyword (increased for better relevance)
-const BONUS_KW_SCORE        = 8;    // per bonus keyword found
+const TITLE_MATCH_SCORE     = 45;   // job title matches a target title
+const ENGINEER_TITLE_SCORE  = 30;   // job has "Engineer" or "Architect" in title (cloud domain)
+const REQUIRED_KW_SCORE     = 20;   // per required keyword (increased for better relevance)
+const BONUS_KW_SCORE        = 5;    // per bonus keyword found
 const REMOTE_SCORE          = 20;   // confirmed remote role
 const RECENCY_SCORE         = 15;   // posted within last 7 days
 const DEAL_BREAKER_PENALTY  = -999; // instant disqualify
-const MIN_SCORE_THRESHOLD   = 5;   // minimum threshold
+const MIN_SCORE_THRESHOLD   = 30;   // only show relevant jobs
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -63,15 +64,18 @@ function scoreJob(job) {
     reasons.push(`Keywords: ${matchedRequired.slice(0, 4).join(', ')}${matchedRequired.length > 4 ? '...' : ''}`);
   }
 
-  // 4. Title match (even without description keywords, matching title = relevant)
-  // This is key for short job posts that only have title + company
+  // 4. Title match bonus for general cloud/IT roles
+  // Even without exact title match, cloud-related roles get credit
   if (matchedTitles.length === 0) {
-    // Check if job is in your target roles even without exact title match
-    const isGeneralCloudRole = containsAny(job.title, ['engineer', 'architect', 'manager', 'lead', 'director', 'vp', 'head', 'principal', 'senior']);
-    const isCloudRelated = containsAny(fullText, ['cloud', 'gcp', 'google cloud', 'aws', 'azure', 'data', 'migration', 'platform']);
-    if (isCloudRelated && isGeneralCloudRole) {
+    const isEngineerArchitect = containsAny(job.title, ['engineer', 'architect', 'platform', 'infrastructure', 'sre', 'devops', 'ops', 'support']);
+    const isCloudRelated = containsAny(fullText, ['cloud', 'gcp', 'google cloud', 'aws', 'azure', 'migration', 'bigquery']);
+
+    if (isEngineerArchitect) {
+      score += ENGINEER_TITLE_SCORE;
+      reasons.push('Cloud engineering role');
+    } else if (isCloudRelated) {
       score += 15;
-      reasons.push('Cloud-related role');
+      reasons.push('Cloud-related title');
     }
   }
 

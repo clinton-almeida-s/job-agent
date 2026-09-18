@@ -39,8 +39,11 @@ jobs:
           retention-days: 7
 
       - name: Send email with Resend API
-        if: ${{ secrets.RESEND_API_KEY != '' }}
         run: |
+          if [ -z "${{ secrets.RESEND_API_KEY }}" ]; then
+            echo "RESEND_API_KEY not set, skipping email"
+            exit 0
+          fi
           echo "Sending email via Resend..."
           RESPONSE=$(curl -s -X POST https://api.resend.com/emails \
             -H "Authorization: Bearer ${{ secrets.RESEND_API_KEY }}" \

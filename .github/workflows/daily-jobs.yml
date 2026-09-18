@@ -34,11 +34,16 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: node main.js --no-ai
 
+      - name: Rename report to consistent name
+        run: |
+          REPORT_FILE=$(ls -t output/report-*.html | head -1)
+          cp "$REPORT_FILE" output/report-latest.html
+
       - name: Upload report as artifact
         uses: actions/upload-artifact@v4
         with:
           name: job-report
-          path: output/report-*.html
+          path: output/report-latest.html
           retention-days: 7
 
       - name: Check secrets

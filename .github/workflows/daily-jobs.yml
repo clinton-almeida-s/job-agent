@@ -35,13 +35,21 @@ jobs:
           path: output/report-*.html
           retention-days: 7
 
-      - name: Send email with report
+      - name: Send email with Resend API
         if: env.RESEND_API_KEY != ''
-        uses: resend/resend-github-action@latest
-        with:
-          api-key: ${{ secrets.RESEND_API_KEY }}
-          from: Job Agent <onboarding@resend.dev>
-          to: ${{ secrets.EMAIL_TO }}
-          subject: "Daily GCP Jobs Report - ${{ github.run_number }}"
-          html: "<p>Your daily GCP/Cloud job report is attached.</p><p>Run the agent manually if you need cover letters generated.</p>"
-          filename: report-*.html
+        run: |
+          # Get the latest report file
+          REPORT_FILE=$(ls -t output/report-*.html | head -1)
+          if [ -n "$REPORT_FILE" ]; then
+            # Send email via Resend API
+            curl -X POST https://api.resend.com/emails \
+              -H "Authorization: Bearer ${{ secrets.RESEND_API_KEY }}" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "from": "Job Agent <onboarding@resend.dev>",
+                "to": ["${{ secrets.EMAIL_TO }}"],
+                "subject": "Daily GCP Jobs Report - $(date +%Y-%m-%d)",
+                "html": "<p>Your daily GCP/Cloud job report is ready.</p><p>Download the attached HTML report.</p>"
+              }'
+            echo "Email sent successfully!"
+          fi

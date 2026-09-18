@@ -425,4 +425,4 @@ async function scrapeAllSources(keywords) {
   });
 }
 
-module.exports = { scrapeAllSources, scrapeLinkedInMumbai };
+module.exports = { scrapeAllSources, scrapeLinkedInRSS, scrapeLinkedInMumbai };

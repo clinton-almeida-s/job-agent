@@ -13,7 +13,7 @@ const BONUS_KW_SCORE        = 8;    // per bonus keyword found
 const REMOTE_SCORE          = 20;   // confirmed remote role
 const RECENCY_SCORE         = 15;   // posted within last 7 days
 const DEAL_BREAKER_PENALTY  = -999; // instant disqualify
-const MIN_SCORE_THRESHOLD   = 8;   // very low threshold to capture more jobs
+const MIN_SCORE_THRESHOLD   = 5;   // minimum threshold
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 

@@ -324,6 +324,39 @@ async function scrapeLinkedInRSS(keyword) {
   }
 }
 
+/**
+ * LinkedIn - Mumbai jobs RSS (specific location)
+ */
+async function scrapeLinkedInMumbai(keyword) {
+  console.log('  Fetching LinkedIn Mumbai RSS...');
+  try {
+    const encoded = encodeURIComponent(keyword);
+    // f_WT=2 = remote, f_CC=105847 = Mumbai
+    const url = `https://www.linkedin.com/jobs/search/?keywords=${encoded}&f_WT=2&f_JT=F&f_CC=105847&sortBy=DD&format=rss`;
+    const { status, body } = await fetch(url);
+    if (status !== 200) return [];
+    const parsed = await parseXML(body);
+    const items = parsed?.rss?.channel?.item || [];
+    const list = Array.isArray(items) ? items : [items];
+    return list.slice(0, 30).map((j, i) => ({
+      id:          `linkedin-mumbai-${Buffer.from(j.link || i.toString()).toString('base64').slice(0, 16)}`,
+      source:      'LinkedIn-Mumbai',
+      title:       cleanText(j.title || ''),
+      company:     cleanText(j['source'] || ''),
+      location:    'Mumbai, India',
+      remote:      false,  // Default to on-site for Mumbai
+      description: cleanText(j.description || ''),
+      tags:        '',
+      salary:      '',
+      url:         j.link || '',
+      posted_at:   j.pubDate || new Date().toISOString(),
+    }));
+  } catch (e) {
+    console.warn(`  LinkedIn Mumbai RSS error: ${e.message}`);
+    return [];
+  }
+}
+
 // ── main export ───────────────────────────────────────────────────────────────
 
 /**
@@ -349,22 +382,33 @@ async function scrapeAllSources(keywords) {
     scrapeWeWorkRemotely('Cloud Migration'),
     scrapeWeWorkRemotely('Platform Engineer'),
     scrapeWeWorkRemotely('Cloud Architect'),
-    scrapeLinkedInRSS('GCP Engineer remote'),
-    scrapeLinkedInRSS('Cloud Architect remote'),
-    scrapeLinkedInRSS('Google Cloud remote'),
-    scrapeLinkedInRSS('BigQuery remote'),
-    scrapeLinkedInRSS('Cloud Migration remote'),
-    scrapeLinkedInRSS('Data Migration remote'),
-    scrapeLinkedInRSS('Platform Engineer remote'),
-    scrapeLinkedInRSS('Cloud Platform Engineer remote'),
-    scrapeLinkedInRSS('Head of Cloud Mumbai'),
-    scrapeLinkedInRSS('Head of Platform Mumbai'),
-    scrapeLinkedInRSS('Manager Cloud Mumbai'),
-    scrapeLinkedInRSS('Director Cloud Mumbai'),
-    scrapeLinkedInRSS('VP Cloud Mumbai'),
-    scrapeLinkedInRSS('GCP Mumbai'),
-    scrapeLinkedInRSS('Cloud Architect Mumbai'),
-    scrapeLinkedInRSS('Cloud Migration Mumbai')
+    scrapeLinkedInRSS('GCP Engineer'),
+    scrapeLinkedInRSS('GCP Cloud Engineer'),
+    scrapeLinkedInRSS('GCP Platform Engineer'),
+    scrapeLinkedInRSS('Google Cloud Architect'),
+    scrapeLinkedInRSS('Cloud Platform Engineer'),
+    scrapeLinkedInRSS('BigQuery Engineer'),
+    scrapeLinkedInRSS('Cloud Migration'),
+    scrapeLinkedInRSS('Data Migration'),
+    scrapeLinkedInRSS('Platform Ops'),
+    scrapeLinkedInRSS('L3 Support GCP'),
+    scrapeLinkedInRSS('Support Engineer GCP'),
+    scrapeLinkedInRSS('Technical Support Engineer'),
+    scrapeLinkedInRSS('Cloud Support'),
+    scrapeLinkedInRSS('Cloud Architect'),
+    scrapeLinkedInRSS('DevOps Engineer GCP'),
+    scrapeLinkedInRSS('Platform Engineer'),
+    scrapeLinkedInRSS('Site Reliability Engineer GCP'),
+    scrapeLinkedInRSS('Principal Cloud Engineer'),
+    // Mumbai specific searches
+    scrapeLinkedInMumbai('GCP Engineer'),
+    scrapeLinkedInMumbai('Google Cloud Architect'),
+    scrapeLinkedInMumbai('Platform Engineer'),
+    scrapeLinkedInMumbai('Cloud Engineer'),
+    scrapeLinkedInMumbai('DevOps Engineer'),
+    scrapeLinkedInMumbai('Support Engineer'),
+    scrapeLinkedInMumbai('L3 Engineer'),
+    scrapeLinkedInMumbai('Technical Support')
   ]);
 
   const all = results
@@ -381,4 +425,4 @@ async function scrapeAllSources(keywords) {
   });
 }
 
-module.exports = { scrapeAllSources };
+module.exports = { scrapeAllSources, scrapeLinkedInMumbai };

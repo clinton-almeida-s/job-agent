@@ -32,7 +32,12 @@
     "Senior Manager - Cloud",
     "Senior Manager - Platform",
     "Engineering Manager - Cloud",
-    "Engineering Manager - Platform"
+    "Engineering Manager - Platform",
+    "Cloud Support Engineer",
+    "Support Engineer",
+    "L2 Engineer",
+    "L3 Engineer",
+    "Technical Support Engineer"
   ],
 
   "required_keywords": [
@@ -75,7 +80,21 @@
     "recruiter",
     "hr",
     "human resources",
-    "business development"
+    "business development",
+    "voice over",
+    "voiceover",
+    "qa tester",
+    "quality assurance",
+    "drilling",
+    "oil",
+    "gas",
+    "programmatic",
+    "trader",
+    "trading",
+    "mobile app",
+    "mobile developer",
+    "ios",
+    "android"
   ],
 
   "preferred_work_type": ["remote", "hybrid", "on-site (Mumbai)"],

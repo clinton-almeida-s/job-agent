@@ -20,6 +20,9 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Install xml2js
+        run: npm install xml2js
+
       - name: Install dependencies
         run: npm install
 

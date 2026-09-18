@@ -1,0 +1,127 @@
+/**
+ * Job Ranker — scores listings against Clinton's profile
+ * Returns top N jobs sorted by relevance score
+ */
+
+const profile = require('../profile.json');
+
+// ── scoring constants ─────────────────────────────────────────────────────────
+
+const TITLE_MATCH_SCORE     = 40;   // job title matches a target title (increased!)
+const REQUIRED_KW_SCORE     = 15;   // per required keyword (increased for better relevance)
+const BONUS_KW_SCORE        = 8;    // per bonus keyword found
+const REMOTE_SCORE          = 20;   // confirmed remote role
+const RECENCY_SCORE         = 15;   // posted within last 7 days
+const DEAL_BREAKER_PENALTY  = -999; // instant disqualify
+const MIN_SCORE_THRESHOLD   = 10;   // lowered to get more results
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+function normalize(str) {
+  return (str || '').toLowerCase();
+}
+
+function containsAny(text, keywords) {
+  const t = normalize(text);
+  return keywords.filter(kw => t.includes(normalize(kw)));
+}
+
+function isRecent(dateStr) {
+  if (!dateStr) return false;
+  const posted = new Date(dateStr);
+  const diffDays = (Date.now() - posted.getTime()) / 86400000;
+  return diffDays <= 7;
+}
+
+/**
+ * Score a single job against the profile.
+ * Returns the job object with `score` and `match_reasons` added.
+ */
+function scoreJob(job) {
+  const fullText = [job.title, job.description, job.tags, job.company, job.location].join(' ');
+  let score = 0;
+  const reasons = [];
+  const warnings = [];
+
+  // 1. deal-breaker check
+  const breakers = containsAny(fullText, profile.deal_breakers);
+  if (breakers.length > 0) {
+    return { ...job, score: DEAL_BREAKER_PENALTY, match_reasons: [], warnings: [`Deal-breaker: ${breakers.join(', ')}`] };
+  }
+
+  // 2. title match
+  const matchedTitles = containsAny(job.title, profile.target_titles);
+  if (matchedTitles.length > 0) {
+    score += TITLE_MATCH_SCORE;
+    reasons.push(`Title match: ${matchedTitles.join(', ')}`);
+  }
+
+  // 3. required keywords
+  const matchedRequired = containsAny(fullText, profile.required_keywords);
+  score += matchedRequired.length * REQUIRED_KW_SCORE;
+  if (matchedRequired.length > 0) {
+    reasons.push(`Keywords: ${matchedRequired.slice(0, 4).join(', ')}${matchedRequired.length > 4 ? '...' : ''}`);
+  }
+
+  // 4. Title match (even without description keywords, matching title = relevant)
+  // This is key for short job posts that only have title + company
+  if (matchedTitles.length === 0) {
+    // Check if job is in your target roles even without exact title match
+    const isGeneralCloudRole = containsAny(job.title, ['engineer', 'architect', 'manager', 'lead', 'director', 'vp', 'head', 'principal', 'senior']);
+    const isCloudRelated = containsAny(fullText, ['cloud', 'gcp', 'google cloud', 'aws', 'azure', 'data', 'migration', 'platform']);
+    if (isCloudRelated && isGeneralCloudRole) {
+      score += 15;
+      reasons.push('Cloud-related role');
+    }
+  }
+
+  // 4. bonus keywords
+  const matchedBonus = containsAny(fullText, profile.bonus_keywords);
+  score += matchedBonus.length * BONUS_KW_SCORE;
+  if (matchedBonus.length > 0) {
+    reasons.push(`Bonus keywords: ${matchedBonus.slice(0, 3).join(', ')}`);
+  }
+
+  // 5. location confirmation (Remote or Mumbai)
+  const isRemote = job.remote ||
+    normalize(job.location).includes('remote') ||
+    containsAny(fullText, ['remote', 'work from home', 'wfh']).length > 0;
+
+  const isMumbai = containsAny(job.location + ' ' + fullText, ['mumbai']);
+
+  if (isRemote) {
+    score += REMOTE_SCORE;
+    reasons.push('Remote confirmed');
+  } else if (isMumbai) {
+    score += REMOTE_SCORE;
+    reasons.push('Location match: Mumbai');
+  } else {
+    warnings.push('Not remote and not in Mumbai — verify location before applying');
+  }
+
+  // 6. recency bonus
+  if (isRecent(job.posted_at)) {
+    score += RECENCY_SCORE;
+    reasons.push('Posted within last 7 days');
+  }
+
+  // 7. zero-score jobs must at least mention some cloud tech
+  if (score < MIN_SCORE_THRESHOLD) {
+    warnings.push('Low cloud tech signal — likely irrelevant');
+  }
+
+  return { ...job, score, match_reasons: reasons, warnings };
+}
+
+/**
+ * Rank all jobs and return top N, filtering out deal-breakers.
+ */
+function rankJobs(jobs, topN = 10) {
+  return jobs
+    .map(scoreJob)
+    .filter(j => j.score >= MIN_SCORE_THRESHOLD) // Strict filter for high relevance
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topN);
+}
+
+module.exports = { rankJobs, scoreJob };

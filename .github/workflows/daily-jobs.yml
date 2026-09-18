@@ -1,0 +1,50 @@
+name: Daily Job Agent
+
+on:
+  schedule:
+    # Run at 8:00 AM UTC daily (1:30 PM IST)
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+    # Allow manual trigger
+
+jobs:
+  job-search:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run job agent
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: node main.js --no-ai
+
+      - name: Upload report as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: job-report
+          path: output/report-*.html
+          retention-days: 7
+
+      - name: Send email with report
+        if: env.EMAIL_TO != ''
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.EMAIL_FROM }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          from: Job Agent <${{ secrets.EMAIL_FROM }}>
+          to: ${{ secrets.EMAIL_TO }}
+          subject: "Daily GCP Jobs Report - ${{ github.run_number }}"
+          body: "Your daily job report is attached. Run the agent manually if you need cover letters generated."
+          attachments: output/report-*.html

@@ -3,7 +3,7 @@ name: Daily Job Agent
 on:
   schedule:
     # Run at 2:30 AM UTC daily (8:00 AM IST)
-    - cron: '30 2 * * *'
+    - cron: '33 2 * * *'
   workflow_dispatch:
     # Allow manual trigger
 

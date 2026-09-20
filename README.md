@@ -51,6 +51,3 @@ Removed/dead sources: Remote-Python, Startup.jobs, Remote-io, WorkRemoteLy, Inde
 3. Set `ANTHROPIC_API_KEY` in your environment or GitHub secrets for cover letters
 4. Run `npm install`
 5. Trigger manually: `node main.js --no-ai`
-
-Built with Claude Code.
-Co-Authored-By: Claude Code <noreply@anthropic.com>

@@ -45,7 +45,8 @@
     "BigQuery", "Cloud Composer", "Airflow",
     "CI/CD", "Cloud Build", "IAM", "Pub/Sub",
     "Data Migration", "Migration", "Teradata",
-    "Platform Ops", "Cloud Migration"
+    "Platform Ops", "Cloud Migration",
+    "Cloud", "Engineer", "DevOps", "SRE"
   ],
 
   "bonus_keywords": [

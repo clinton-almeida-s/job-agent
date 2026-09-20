@@ -14,7 +14,7 @@ const BONUS_KW_SCORE        = 5;    // per bonus keyword found
 const REMOTE_SCORE          = 20;   // confirmed remote role
 const RECENCY_SCORE         = 15;   // posted within last 7 days
 const DEAL_BREAKER_PENALTY  = -999; // instant disqualify
-const MIN_SCORE_THRESHOLD   = 30;   // only show relevant jobs
+const MIN_SCORE_THRESHOLD   = 15;   // lowered from 30 to surface more matching jobs
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -24,7 +24,12 @@ function normalize(str) {
 
 function containsAny(text, keywords) {
   const t = normalize(text);
-  return keywords.filter(kw => t.includes(normalize(kw)));
+  return keywords.filter(kw => {
+    const n = normalize(kw);
+    // word-boundary match to avoid partial hits (e.g., "contract" in "contractor")
+    const regex = new RegExp('\\\\b' + n.replace(/[.*+?^${}()|[\]\\\\]/g, '\\\\$&') + '\\\\b', 'i');
+    return regex.test(t);
+  });
 }
 
 function isRecent(dateStr) {

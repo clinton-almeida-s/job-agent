@@ -52,10 +52,12 @@ function parseRssXml(xml) {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-function fetch(url) {
+function fetch(url, ua = 'JobAgent/1.0 (personal job search bot)', cookies = '') {
   return new Promise((resolve, reject) => {
     const client = url.startsWith('https') ? https : http;
-    client.get(url, { headers: { 'User-Agent': 'JobAgent/1.0 (personal job search bot)' } }, res => {
+    const headers = { 'User-Agent': ua };
+    if (cookies) headers['Cookie'] = cookies;
+    client.get(url, { headers }, res => {
       let data = '';
       res.on('data', chunk => (data += chunk));
       res.on('end', () => resolve({ status: res.statusCode, body: data }));
@@ -235,8 +237,8 @@ async function scrapeWorkRemoteLy(keyword) {
 async function scrapeWeWorkRemotely(keyword) {
   console.log('  Fetching We Work Remotely...');
   try {
-    const url = `https://weworkremotely.com/remote-jobs/search.rss?term=${encodeURIComponent(keyword)}`;
-    const { status, body } = await fetch(url);
+    const url = `https://weworkremotely.com/remote-jobs.rss`;
+    const { status, body } = await fetch(url, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36');
     if (status !== 200) return [];
     const parsed = await parseXML(body);
     const items = parsed?.rss?.channel?.item || [];
@@ -286,6 +288,102 @@ async function scrapeRemotive(keyword) {
     }));
   } catch (e) {
     console.warn(`  Remotive error: ${e.message}`);
+    return [];
+  }
+}
+
+/**
+ * Shine — Indian job board (lightweight page scraping)
+ */
+async function scrapeShine(keyword) {
+  console.log('  Fetching Shine...');
+  try {
+    const url = `https://www.shine.com/job-search/jobs?key=${encodeURIComponent(keyword)}`;
+    const { status, body } = await fetch(url, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36');
+    if (status !== 200) return [];
+    const jobs = [];
+    // Shine renders job cards with title links; regex approach
+    const matches = body.match(/<a[^>]*href="(https:\/\/www\.shine\.com\/job-search\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi) || [];
+    for (let i = 0; i < Math.min(matches.length, 15); i++) {
+      const m = matches[i].match(/href="([^"]+)"/);
+      const url = m ? m[1].replace(/\s+/g, ' ').trim() : '';
+      const title = matches[i].replace(/<[^>]+>/g, '').trim().slice(0, 120);
+      if (!title || title.length < 5) continue;
+      jobs.push({
+        id: `shine-${Buffer.from(url || title + i).toString('base64').slice(0, 16)}`,
+        source: 'Shine',
+        title: cleanText(title),
+        company: '',
+        location: 'India / Remote',
+        remote: true,
+        description: '',
+        tags: '',
+        salary: '',
+        url: url || '',
+        posted_at: new Date().toISOString(),
+      });
+    }
+    return jobs;
+  } catch (e) {
+    console.warn(`  Shine error: ${e.message}`);
+    return [];
+  }
+}
+
+/**
+ * LinkedIn Cookie-based (needs user cookies from browser session)
+ * To use: export LINKEDIN_COOKIES from your browser session (linked cookies)
+ * Example: ANTHROPIC_API_KEY=... node -e "console.log(process.env.LINKEDIN_COOKIES)"
+ */
+async function scrapeLinkedInCookie(keyword) {
+  console.log('  Fetching LinkedIn (cookie-based)...');
+  try {
+    const cookieStr = process.env.LINKEDIN_COOKIES || '';
+    if (!cookieStr || cookieStr.length < 20) {
+      console.log('     (LinkedIn cookie not set — set LINKEDIN_COOKIES env var to enable)');
+      return [];
+    }
+    const encoded = encodeURIComponent(keyword);
+    const url = `https://www.linkedin.com/jobs/search/?keywords=${encoded}&f_WT=2&f_JT=F&sortBy=DD`;
+    const { status, body } = await fetch(url, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', cookieStr);
+    if (status !== 200) return [];
+    // Try to extract job cards from HTML (lightweight regex)
+    const jobs = [];
+    // Look for job title links in HTML
+    const titleRe = /<a[^>]*href="([^"]*linkedin\.com\/jobs\/view[^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
+    let m;
+    while ((m = titleRe.exec(body)) !== null) {
+      const url = m[1].startsWith('http') ? m[1] : `https://www.linkedin.com${m[1]}`;
+      const title = cleanText(m[2]).slice(0, 120);
+      if (title && title.length > 3 && !title.toLowerCase().includes('cookie') && !title.toLowerCase().includes('privacy')) {
+        jobs.push({
+          id: `linkedin-cookie-${Buffer.from(url).toString('base64').slice(0, 16)}`,
+          source: 'LinkedIn',
+          title: title,
+          company: '',
+          location: 'Remote',
+          remote: true,
+          description: '',
+          tags: '',
+          salary: '',
+          url: url,
+          posted_at: new Date().toISOString(),
+        });
+      }
+    }
+    if (jobs.length === 0) {
+      // Fallback: try to extract from JSON embedded in page
+      const jsonMatch = body.match(/"data":(\{[\s\S]*?"jobs":[\s\S]*?\})/);
+      if (jsonMatch) {
+        try {
+          const data = JSON.parse(jsonMatch[1]);
+          console.log('     (Found embedded LinkedIn job data, but parsing requires more structure)');
+        } catch (e) { /* ignore */ }
+      }
+    }
+    return jobs.slice(0, 20);
+  } catch (e) {
+    console.warn(`  LinkedIn cookie error: ${e.message}`);
     return [];
   }
 }
@@ -369,6 +467,7 @@ async function scrapeAllSources(keywords) {
 
   const results = await Promise.allSettled([
     scrapeRemoteOK(keywords),
+    // Remotive — working JSON API
     scrapeRemotive('GCP'),
     scrapeRemotive('Google Cloud'),
     scrapeRemotive('BigQuery'),
@@ -377,38 +476,23 @@ async function scrapeAllSources(keywords) {
     scrapeRemotive('Platform Engineer'),
     scrapeRemotive('Cloud Architect'),
     scrapeRemotive('Cloud Engineer'),
+    // We Work Remotely — fixed URL + browser UA
     scrapeWeWorkRemotely('GCP'),
     scrapeWeWorkRemotely('Google Cloud'),
     scrapeWeWorkRemotely('Cloud Migration'),
     scrapeWeWorkRemotely('Platform Engineer'),
     scrapeWeWorkRemotely('Cloud Architect'),
+    // LinkedIn — cookie attempt (needs LINKEDIN_COOKIES env), soft RSS fallback
+    scrapeLinkedInCookie('GCP Engineer'),
+    scrapeLinkedInCookie('Cloud Architect'),
     scrapeLinkedInRSS('GCP Engineer'),
-    scrapeLinkedInRSS('GCP Cloud Engineer'),
-    scrapeLinkedInRSS('GCP Platform Engineer'),
-    scrapeLinkedInRSS('Google Cloud Architect'),
-    scrapeLinkedInRSS('Cloud Platform Engineer'),
-    scrapeLinkedInRSS('BigQuery Engineer'),
-    scrapeLinkedInRSS('Cloud Migration'),
-    scrapeLinkedInRSS('Data Migration'),
-    scrapeLinkedInRSS('Platform Ops'),
-    scrapeLinkedInRSS('L3 Support GCP'),
-    scrapeLinkedInRSS('Support Engineer GCP'),
-    scrapeLinkedInRSS('Technical Support Engineer'),
-    scrapeLinkedInRSS('Cloud Support'),
-    scrapeLinkedInRSS('Cloud Architect'),
-    scrapeLinkedInRSS('DevOps Engineer GCP'),
-    scrapeLinkedInRSS('Platform Engineer'),
-    scrapeLinkedInRSS('Site Reliability Engineer GCP'),
-    scrapeLinkedInRSS('Principal Cloud Engineer'),
-    // Mumbai specific searches
-    scrapeLinkedInMumbai('GCP Engineer'),
-    scrapeLinkedInMumbai('Google Cloud Architect'),
-    scrapeLinkedInMumbai('Platform Engineer'),
-    scrapeLinkedInMumbai('Cloud Engineer'),
-    scrapeLinkedInMumbai('DevOps Engineer'),
-    scrapeLinkedInMumbai('Support Engineer'),
-    scrapeLinkedInMumbai('L3 Engineer'),
-    scrapeLinkedInMumbai('Technical Support')
+    // Shine — Indian board (lightweight page scraping)
+    scrapeShine('GCP Engineer'),
+    scrapeShine('Cloud Architect'),
+    scrapeShine('Platform Engineer'),
+    scrapeShine('Google Cloud'),
+    // Removed broken/dead sources: Remote-Python, Startup.jobs, Remote-io, WorkRemoteLy,
+    // LinkedIn Mumbai (dead URL pattern), Indeed (no public feed)
   ]);
 
   const all = results
@@ -425,4 +509,4 @@ async function scrapeAllSources(keywords) {
   });
 }
 
-module.exports = { scrapeAllSources, scrapeLinkedInRSS, scrapeLinkedInMumbai };
+module.exports = { scrapeAllSources, scrapeLinkedInRSS, scrapeLinkedInMumbai, scrapeShine, scrapeLinkedInCookie };

@@ -19,7 +19,7 @@ const profile               = require('./profile.json');
 const args   = process.argv.slice(2);
 const NO_AI  = args.includes('--no-ai');
 const OPEN   = args.includes('--open');
-const TOP_N  = 30; // Show top 30
+const TOP_N  = 40; // Show top 40
 
 async function run() {
   console.log('\n🔎 Job Agent starting —', new Date().toLocaleString());

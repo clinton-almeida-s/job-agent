@@ -82,24 +82,23 @@ jobs:
             exit 0
           fi
 
-          # Write payload to temp file to avoid "Argument list too long"
+          # Write payload using Python (avoids YAML heredoc issues and command-length limits)
           PAYLOAD_FILE=$(mktemp)
-          base64 -w 0 "$REPORT_FILE" > /tmp/attachment.b64
-          ATTACH=$(cat /tmp/attachment.b64)
-          cat > "$PAYLOAD_FILE" <<EOF
-{
-  "from": "Job Agent <onboarding@resend.dev>",
-  "to": ["${{ secrets.EMAIL_TO }}"],
-  "subject": "Daily GCP Jobs Report - $(date +%Y-%m-%d)",
-  "html": "<p>Your daily GCP/Cloud job report is ready.</p><p>See attached HTML report.</p>",
-  "attachments": [
-    {
-      "filename": "job-report.html",
-      "content": "$ATTACH"
-    }
-  ]
+          export REPORT_FILE EMAIL_TO="${{ secrets.EMAIL_TO }}" PAYLOAD_FILE
+          python3 << 'PYEOF'
+import json, base64, os
+with open(os.environ['REPORT_FILE'], 'rb') as f:
+    b64 = base64.b64encode(f.read()).decode()
+payload = {
+    "from": "Job Agent <onboarding@resend.dev>",
+    "to": [os.environ['EMAIL_TO']],
+    "subject": "Daily GCP Jobs Report - " + __import__('datetime').datetime.now().strftime('%Y-%m-%d'),
+    "html": "<p>Your daily GCP/Cloud job report is ready.</p><p>See attached HTML report.</p>",
+    "attachments": [{"filename": "job-report.html", "content": b64}]
 }
-EOF
+with open(os.environ['PAYLOAD_FILE'], 'w') as f:
+    json.dump(payload, f)
+PYEOF
 
           echo "Sending email via Resend (file payload)..."
           RESPONSE=$(curl -s -X POST https://api.resend.com/emails \

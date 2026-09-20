@@ -2,14 +2,15 @@ name: Daily Job Agent
 
 on:
   schedule:
-    # Run at 2:30 AM UTC daily (8:00 AM IST)
-    - cron: '33 2 * * *'
+    # Run at 2:00 AM UTC daily (8:30 AM IST) — adjusted for cleaner scheduling
+    - cron: '0 2 * * *'
   workflow_dispatch:
     # Allow manual trigger
 
 jobs:
   job-search:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout code

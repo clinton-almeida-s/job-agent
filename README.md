@@ -1,31 +1,56 @@
 # Job Agent — Daily GCP / Cloud Job Scraper
 
-A lightweight Node.js agent that scrapes remote GCP / Cloud / Platform Engineering jobs from multiple boards and produces a ranked HTML report with optional AI cover letters.
+A lightweight Node.js agent that searches remote GCP / Cloud / Platform Engineering roles across multiple job boards, ranks them against a profile, generates tailored cover letters (optional, via Claude), and produces a clean HTML report.
 
-## Sources
-- RemoteOK, Remotive, We Work Remotely (working public feeds)
-- Shine (Indian board), LinkedIn (soft RSS attempt + optional cookie-based)
+## What it does
+1. Scrapes active sources: RemoteOK, Remotive, We Work Remotely, Shine (India), LinkedIn (optional cookie-based), and more.
+2. Filters out already-seen listings and deal-breakers (sales, temporary, on-site only, etc.).
+3. Scores each job by title, keywords, remote status, recency, and profile match.
+4. Generates AI cover letters if `ANTHROPIC_API_KEY` is set.
+5. Outputs an HTML report (`output/report-*.html`) that can be emailed or opened in a browser.
 
-## Usage
+## How to use it
 
 ```bash
-node main.js              # full run (scrape → rank → cover letters → report)
-node main.js --no-ai      # skip Claude cover letters
-node main.js --open       # open HTML report after generation
+# Full run (scrape → rank → cover letters → HTML report)
+node main.js
+
+# Skip AI cover letters (faster, no API key needed)
+node main.js --no-ai
+
+# Auto-open the HTML report in your browser after generation
+node main.js --open
+
+# Optional: enable LinkedIn cookie-based scraping (advanced, may violate ToS)
+LINKEDIN_COOKIES='<session-cookies>' node main.js
 ```
 
-## Environment Variables
-- `ANTHROPIC_API_KEY` — for Claude cover letters
-- `LINKEDIN_COOKIES` — optional session cookies for LinkedIn scraping (use at own risk)
+## Requirements
+- Node.js 22+
+- `ANTHROPIC_API_KEY` (only for cover letters; the agent runs fine without it — use `--no-ai`)
+- `LINKEDIN_COOKIES` (optional, for enhanced LinkedIn results)
+- GitHub Actions (for daily scheduling) — see `.github/workflows/daily-jobs.yml`
 
 ## Schedule
-Runs daily at 2:30 AM UTC (8:00 AM IST) via `.github/workflows/daily-jobs.yml`.
+Runs at `2:00 AM UTC` (8:30 AM IST) daily. A 15-minute timeout prevents runaway runs.
 
-## Why the schedule triggered early today
-The workflow uses `cron: '30 2 * * *'` (UTC). If GitHub's runners had a delay or the previous run queued, it can trigger at an unexpected IST time. To make it stricter and avoid delays, consider:
-- Adding `timeout-minutes: 15` to fail fast
-- Changing cron to `0 2 * * *` for a cleaner start
-- Not changing to earlier — the delay was likely a queue/backfill issue, not a timing error
+Note: the workflow triggers via `cron`. Any occasional time shift is a GitHub runner-queue effect, not a schedule error. Changing the cron earlier does not prevent queue delays.
 
-Built by Claude Code.
+## Sources included
+- RemoteOK (JSON API)
+- Remotive (JSON API)
+- We Work Remotely (RSS, browser UA)
+- Shine (Indian board, lightweight page scraping)
+- LinkedIn (optional cookie-based attempt + soft RSS fallback)
+
+Removed/dead sources: Remote-Python, Startup.jobs, Remote-io, WorkRemoteLy, Indeed (no public feed).
+
+## Setup in your repo
+1. Clone this repo
+2. Copy `profile.json` and update your keywords, titles, and resume path
+3. Set `ANTHROPIC_API_KEY` in your environment or GitHub secrets for cover letters
+4. Run `npm install`
+5. Trigger manually: `node main.js --no-ai`
+
+Built with Claude Code.
 Co-Authored-By: Claude Code <noreply@anthropic.com>

@@ -82,24 +82,30 @@ jobs:
             exit 0
           fi
 
-          # Convert HTML file to base64 for attachment
-          BASE64_CONTENT=$(base64 -w 0 "$REPORT_FILE")
+          # Write payload to temp file to avoid "Argument list too long"
+          PAYLOAD_FILE=$(mktemp)
+          base64 -w 0 "$REPORT_FILE" > /tmp/attachment.b64
+          ATTACH=$(cat /tmp/attachment.b64)
+          cat > "$PAYLOAD_FILE" <<EOF
+{
+  "from": "Job Agent <onboarding@resend.dev>",
+  "to": ["${{ secrets.EMAIL_TO }}"],
+  "subject": "Daily GCP Jobs Report - $(date +%Y-%m-%d)",
+  "html": "<p>Your daily GCP/Cloud job report is ready.</p><p>See attached HTML report.</p>",
+  "attachments": [
+    {
+      "filename": "job-report.html",
+      "content": "$ATTACH"
+    }
+  ]
+}
+EOF
 
-          echo "Sending email via Resend..."
+          echo "Sending email via Resend (file payload)..."
           RESPONSE=$(curl -s -X POST https://api.resend.com/emails \
             -H "Authorization: Bearer ${{ secrets.RESEND_API_KEY }}" \
             -H "Content-Type: application/json" \
-            -d "{
-              \"from\": \"Job Agent <onboarding@resend.dev>\",
-              \"to\": [\"${{ secrets.EMAIL_TO }}\"],
-              \"subject\": \"Daily GCP Jobs Report - $(date +%Y-%m-%d)\",
-              \"html\": \"<p>Your daily GCP/Cloud job report is ready.</p><p>See attached HTML report.</p>\",
-              \"attachments\": [
-                {
-                  \"filename\": \"job-report.html\",
-                  \"content\": \"$BASE64_CONTENT\"
-                }
-              ]
-            }")
+            --data-binary @"$PAYLOAD_FILE")
+          rm -f "$PAYLOAD_FILE" /tmp/attachment.b64
           echo "Response: $RESPONSE"
           echo "Email sent with attachment!"

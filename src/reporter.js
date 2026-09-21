@@ -53,6 +53,7 @@ function jobCard(job, index) {
       ${coverLetterHtml}
       <div class="actions">
         <a href="${job.url}" target="_blank" class="btn-apply">🚀 Apply Now</a>
+        ${extractEmployerUrl(job) ? '<a href="' + extractEmployerUrl(job) + '" target="_blank" style="background:#0f766e;color:#e5e7eb;border:1px solid #14b8a6;padding:.5rem 1.1rem;border-radius:8px;font-size:.82rem;font-weight:500;text-decoration:none;display:inline-flex;align-items:center;margin-left:.5rem;">🏢 Employer Site (bypass paywall)</a>' : ''}
         <button onclick="markApplied('${job.id}', '${job.title}', '${job.company}')">✅ Mark as Applied</button>
         <button onclick="skipJob('${job.id}')">⏭ Skip (hide tomorrow)</button>
       </div>
@@ -163,5 +164,6 @@ function saveReport(jobs, trackerStats) {
   fs.writeFileSync(filepath, generateHTML(jobs, trackerStats));
   return filepath;
 }
+function extractEmployerUrl(job){const d=job.description||"";const m=d.match(/href="(https?:\/\/(?!remoteok\.com|weworkremotely\.com|remotive\.com)[^"]+)"/i);return m?m[1]:"";}
 
 module.exports = { saveReport };

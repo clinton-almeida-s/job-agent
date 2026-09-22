@@ -1,6 +1,8 @@
 # Job Agent — Daily GCP / Cloud Job Scraper
 
-A lightweight Node.js agent that searches remote GCP / Cloud / Platform Engineering roles across multiple job boards, ranks them against a profile, generates tailored cover letters (optional, via Claude), and produces a clean HTML report.
+A lightweight Node.js agent that searches GCP / Cloud / Platform Engineering roles across multiple job boards, ranks them against your profile, generates tailored cover letters (optional, via Claude), and produces a clean HTML report.
+
+**Target:** Mumbai-based or remote roles with salary ₹35 LPA+.
 
 ## What it does
 1. Scrapes active sources: RemoteOK, Remotive, We Work Remotely, Shine (India), LinkedIn (optional cookie-based), and more.
@@ -51,3 +53,26 @@ Removed/dead sources: Remote-Python, Startup.jobs, Remote-io, WorkRemoteLy, Inde
 3. Set `ANTHROPIC_API_KEY` in your environment or GitHub secrets for cover letters
 4. Run `npm install`
 5. Trigger manually: `node main.js --no-ai`
+
+## LinkedIn Cookie Setup (for Mumbai jobs)
+To get Mumbai-specific results from LinkedIn:
+
+1. Open LinkedIn in your browser while logged in
+2. Open DevTools (F12) → Network tab
+3. Refresh the page, click on any request to `linkedin.com`
+4. Go to **Headers** → **Request Headers** → find `cookie:`
+5. Copy the entire cookie string value
+6. Set it as an environment variable:
+   ```bash
+   # Windows (PowerShell)
+   $env:LINKEDIN_COOKIES = 'your-cookie-string-here'
+   node main.js --no-ai
+   ```
+7. For GitHub Actions: add `LINKEDIN_COOKIES` as a secret and add to the workflow env section
+
+> Note: LinkedIn cookies expire after a few days. Update periodically for best results.
+
+## Indian Job Sources
+Most major Indian job sites (Naukri, Indeed India, Instahyre, Wellfound) block automated access with 403 errors. The code includes placeholder functions that gracefully handle this. For Mumbai-specific results:
+- Set up LinkedIn cookie scraping above
+- Manually check Naukri.com / Indeed India for roles matching your profile

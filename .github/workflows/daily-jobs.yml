@@ -34,6 +34,7 @@ jobs:
       - name: Run job agent
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          LINKEDIN_COOKIES: ${{ secrets.LINKEDIN_COOKIES }}
         run: node main.js --no-ai
 
       - name: Rename report to consistent name

@@ -304,56 +304,87 @@ async function scrapeShine(keyword) {
 
 /**
  * LinkedIn Cookie-based (needs user cookies from browser session)
- * To use: export LINKEDIN_COOKIES from your browser session (linked cookies)
- * Example: ANTHROPIC_API_KEY=... node -e "console.log(process.env.LINKEDIN_COOKIES)"
+ * To use: export LINKEDIN_COOKIES from your browser session
+ * See README for setup instructions
  */
 async function scrapeLinkedInCookie(keyword) {
   console.log('  Fetching LinkedIn (cookie-based)...');
   try {
     const cookieStr = process.env.LINKEDIN_COOKIES || '';
     if (!cookieStr || cookieStr.length < 20) {
-      console.log('     (LinkedIn cookie not set — set LINKEDIN_COOKIES env var to enable)');
+      console.log('     (LinkedIn cookie not set — set LINKEDIN_COOKIES env var to enable. See README for setup.)');
       return [];
     }
     const encoded = encodeURIComponent(keyword);
-    const url = `https://www.linkedin.com/jobs/search/?keywords=${encoded}&f_WT=2&f_JT=F&sortBy=DD`;
-    const { status, body } = await fetch(url, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', cookieStr);
-    if (status !== 200) return [];
-    // Try to extract job cards from HTML (lightweight regex)
-    const jobs = [];
-    // Look for job title links in HTML
-    const titleRe = /<a[^>]*href="([^"]*linkedin\.com\/jobs\/view[^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
-    let m;
-    while ((m = titleRe.exec(body)) !== null) {
-      const url = m[1].startsWith('http') ? m[1] : `https://www.linkedin.com${m[1]}`;
-      const title = cleanText(m[2]).slice(0, 120);
-      if (title && title.length > 3 && !title.toLowerCase().includes('cookie') && !title.toLowerCase().includes('privacy')) {
-        jobs.push({
-          id: `linkedin-cookie-${Buffer.from(url).toString('base64').slice(0, 16)}`,
-          source: 'LinkedIn',
-          title: title,
-          company: '',
-          location: 'Remote',
-          remote: true,
-          description: '',
-          tags: '',
-          salary: '',
-          url: url,
-          posted_at: new Date().toISOString(),
-        });
-      }
-    }
-    if (jobs.length === 0) {
-      // Fallback: try to extract from JSON embedded in page
-      const jsonMatch = body.match(/"data":(\{[\s\S]*?"jobs":[\s\S]*?\})/);
-      if (jsonMatch) {
+    // Search for Mumbai jobs with various filters
+    const urls = [
+      `https://www.linkedin.com/jobs/search?keywords=${encoded}&location=Mumbai&f_JT=F&sortBy=DD`,
+      `https://www.linkedin.com/jobs/search?keywords=${encoded}&location=Mumbai&f_WT=2&f_JT=F&sortBy=DD`,
+    ];
+
+    for (const url of urls) {
+      const { status, body } = await fetch(url, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', cookieStr);
+      if (status !== 200) continue;
+
+      // Extract job listings from JSON-LD script tags
+      const jobs = [];
+      const jsonLdMatches = body.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g);
+      for (const match of jsonLdMatches) {
         try {
-          const data = JSON.parse(jsonMatch[1]);
-          console.log('     (Found embedded LinkedIn job data, but parsing requires more structure)');
-        } catch (e) { /* ignore */ }
+          const json = JSON.parse(match[1]);
+          if (json['@graph'] && Array.isArray(json['@graph'])) {
+            json['@graph'].forEach(item => {
+              if (item['@type'] === 'JobPosting' && item.jobTitle) {
+                jobs.push({
+                  id: `linkedin-json-${Buffer.from(item.url || item.jobTitle).toString('base64').slice(0, 16)}`,
+                  source: 'LinkedIn',
+                  title: item.jobTitle || '',
+                  company: item.hiringOrganization?.name || '',
+                  location: item.workplaceLocation?.address || 'Mumbai, India',
+                  remote: item.jobLocationType === 'REMOTE',
+                  description: cleanText(item.description || ''),
+                  tags: (item.skills || '').join(', '),
+                  salary: item.baseSalary?.value?.minValue ? `$${item.baseSalary.value.minValue}` : '',
+                  url: item.url || '',
+                  posted_at: new Date(item.datePosted || Date.now()).toISOString(),
+                });
+              }
+            });
+          }
+        } catch (e) { /* ignore parse errors */ }
+      }
+
+      // Fallback: regex extraction
+      if (jobs.length === 0) {
+        const titleRe = /<a[^>]*href="([^"]*linkedin\.com\/jobs\/view[^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
+        let m;
+        while ((m = titleRe.exec(body)) !== null) {
+          const jobUrl = m[1].startsWith('http') ? m[1] : `https://www.linkedin.com${m[1]}`;
+          const title = cleanText(m[2]).slice(0, 120);
+          if (title && title.length > 3 && !title.toLowerCase().includes('cookie') && !title.toLowerCase().includes('privacy')) {
+            jobs.push({
+              id: `linkedin-regex-${Buffer.from(jobUrl).toString('base64').slice(0, 16)}`,
+              source: 'LinkedIn',
+              title: title,
+              company: '',
+              location: 'Mumbai, India',
+              remote: false,
+              description: '',
+              tags: '',
+              salary: '',
+              url: jobUrl,
+              posted_at: new Date().toISOString(),
+            });
+          }
+        }
+      }
+
+      if (jobs.length > 0) {
+        console.log(`     Found ${jobs.length} jobs`);
+        return jobs.slice(0, 30);
       }
     }
-    return jobs.slice(0, 20);
+    return [];
   } catch (e) {
     console.warn(`  LinkedIn cookie error: ${e.message}`);
     return [];

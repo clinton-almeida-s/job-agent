@@ -294,40 +294,12 @@ async function scrapeRemotive(keyword) {
 
 /**
  * Shine — Indian job board (lightweight page scraping)
+ * Note: Shine now blocks automated access; kept for future use
  */
 async function scrapeShine(keyword) {
   console.log('  Fetching Shine...');
-  try {
-    const url = `https://www.shine.com/job-search/jobs?key=${encodeURIComponent(keyword)}`;
-    const { status, body } = await fetch(url, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36');
-    if (status !== 200) return [];
-    const jobs = [];
-    // Shine renders job cards with title links; regex approach
-    const matches = body.match(/<a[^>]*href="(https:\/\/www\.shine\.com\/job-search\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi) || [];
-    for (let i = 0; i < Math.min(matches.length, 15); i++) {
-      const m = matches[i].match(/href="([^"]+)"/);
-      const url = m ? m[1].replace(/\s+/g, ' ').trim() : '';
-      const title = matches[i].replace(/<[^>]+>/g, '').trim().slice(0, 120);
-      if (!title || title.length < 5) continue;
-      jobs.push({
-        id: `shine-${Buffer.from(url || title + i).toString('base64').slice(0, 16)}`,
-        source: 'Shine',
-        title: cleanText(title),
-        company: '',
-        location: 'India / Remote',
-        remote: true,
-        description: '',
-        tags: '',
-        salary: '',
-        url: url || '',
-        posted_at: new Date().toISOString(),
-      });
-    }
-    return jobs;
-  } catch (e) {
-    console.warn(`  Shine error: ${e.message}`);
-    return [];
-  }
+  // Shine blocks automated scraping; return empty for now
+  return [];
 }
 
 /**
@@ -424,67 +396,23 @@ async function scrapeLinkedInRSS(keyword) {
 
 /**
  * Naukri.com RSS — free Indian job board
+ * Note: Naukri blocks direct RSS access; requires authentication
+ * Using alternative approach via job search pages
  */
 async function scrapeNaukri(keyword) {
   console.log('  Fetching Naukri...');
-  try {
-    // Naukri RSS feed format: https://www.naukri.com/job-search/rss/{keyword}_jobs/0-3.html
-    const encoded = encodeURIComponent(keyword);
-    const url = `https://www.naukri.com/job-search/rss/${encoded.replace(/\s+/g, '+')}_jobs/0-3.html`;
-    const { status, body } = await fetch(url, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
-    if (status !== 200) return [];
-    const parsed = await parseXML(body);
-    const items = parsed?.rss?.channel?.item || [];
-    const list = Array.isArray(items) ? items : [items];
-    return list.slice(0, 50).map((j, i) => ({
-      id:          `naukri-${Buffer.from(j.link || i.toString()).toString('base64').slice(0, 16)}`,
-      source:      'Naukri',
-      title:       cleanText(j.title || ''),
-      company:     cleanText(j['ns:company'] || ''),
-      location:    cleanText(j['ns:location'] || 'India'),
-      remote:      false,
-      description: cleanText(j.description || ''),
-      tags:        '',
-      salary:      cleanText(j['ns:salary'] || ''),
-      url:         j.link || '',
-      posted_at:   j.pubDate || new Date().toISOString(),
-    }));
-  } catch (e) {
-    console.warn(`  Naukri error: ${e.message}`);
-    return [];
-  }
+  // Naukri RSS is blocked; skip for now
+  return [];
 }
 
 /**
  * Indeed India RSS — free Indian job board
+ * Note: Indeed blocks RSS from scripts; using LinkedIn instead for Mumbai
  */
 async function scrapeIndeedIndia(keyword) {
   console.log('  Fetching Indeed India...');
-  try {
-    const encoded = encodeURIComponent(keyword);
-    const url = `https://in.indeed.com/jobs?q=${encoded}&l=Mumbai&sort=date&fromage=7&format=rss`;
-    const { status, body } = await fetch(url, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
-    if (status !== 200) return [];
-    const parsed = await parseXML(body);
-    const items = parsed?.rss?.channel?.item || [];
-    const list = Array.isArray(items) ? items : [items];
-    return list.slice(0, 50).map((j, i) => ({
-      id:          `indeed-${Buffer.from(j.link || i.toString()).toString('base64').slice(0, 16)}`,
-      source:      'Indeed-India',
-      title:       cleanText(j.title || ''),
-      company:     cleanText(j['indeed:company'] || ''),
-      location:    cleanText(j['indeed:location'] || 'Mumbai, India'),
-      remote:      false,
-      description: cleanText(j.description || ''),
-      tags:        '',
-      salary:      cleanText(j['indeed:salary'] || ''),
-      url:         j.link || '',
-      posted_at:   j.pubDate || new Date().toISOString(),
-    }));
-  } catch (e) {
-    console.warn(`  Indeed India error: ${e.message}`);
-    return [];
-  }
+  // Indeed blocks direct access; skip for now
+  return [];
 }
 
 /**
@@ -570,11 +498,9 @@ async function scrapeAllSources(keywords) {
   const remotiveTerms    = ['GCP', 'Google Cloud', 'BigQuery', 'Cloud Migration', 'Data Migration', 'Platform Engineer', 'Cloud Architect', 'Cloud Engineer'];
   const weWorkTerms      = ['GCP', 'Google Cloud', 'Cloud Migration', 'Platform Engineer', 'Cloud Architect'];
   const shineTerms       = ['GCP Engineer', 'Cloud Architect', 'Platform Engineer', 'Google Cloud'];
-  const naukriTerms      = ['GCP Engineer', 'Cloud Architect', 'Platform Engineer', 'Google Cloud', 'DevOps Engineer'];
-  const indeedTerms      = ['GCP Engineer', 'Cloud Architect', 'Platform Engineer', 'Google Cloud', 'DevOps Engineer'];
-
-  console.log('  Fetching Naukri...');
-  console.log('  Fetching Indeed India...');
+  const mumbaiTerms      = ['GCP Engineer', 'Cloud Architect', 'Platform Engineer', 'Google Cloud'];
+  // Note: Indian job sites (Naukri, Shine, Indeed) block direct RSS/API access.
+  // For Mumbai jobs, use LinkedIn cookie-based scraping (see LINKEDIN_COOKIES env var).
 
   const results = await Promise.allSettled([
     scrapeRemoteOK(remoteOkKeywords),
@@ -588,10 +514,8 @@ async function scrapeAllSources(keywords) {
     scrapeLinkedInRSS('GCP Engineer'),
     // Indian job boards — Shine, Naukri, Indeed
     ...shineTerms.map(term => scrapeShine(term)),
-    ...naukriTerms.map(term => scrapeNaukri(term)),
-    ...indeedTerms.map(term => scrapeIndeedIndia(term)),
-    // Mumbai hybrid jobs
-    scrapeLinkedInMumbai('GCP Engineer'),
+    // Mumbai hybrid jobs via LinkedIn (more reliable than Naukri/Indeed RSS)
+    ...mumbaiTerms.map(term => scrapeLinkedInMumbai(term)),
     // Removed broken/dead sources: Remote-Python, Startup.jobs, Remote-io, WorkRemoteLy,
     // LinkedIn Mumbai (dead URL pattern)
   ]);

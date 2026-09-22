@@ -465,13 +465,11 @@ function parseSalaryMin(salaryStr) {
   if (rangeMatch) {
     return parseFloat(rangeMatch[1]) * 100000;
   }
-  // Handle USD values like "$120k"
-  const usdMatch = salaryStr.match(/\$(\d+)(?:k)?/i);
+  // Handle USD values like "$120k" or "$90k - $105k"
+  const usdMatch = salaryStr.match(/\$(\d+)\s*k/i);
   if (usdMatch) {
-    const usdValue = usdMatch[1].toLowerCase().endsWith('k')
-      ? parseInt(usdMatch[1]) * 1000
-      : parseInt(usdMatch[1]);
-    return usdValue * 83; // Rough INR conversion
+    const usdValue = parseInt(usdMatch[1]) * 1000;
+    return usdValue * 83; // Convert to INR (approx 83 INR per USD)
   }
   // Handle plain numbers
   const plainMatch = salaryStr.match(/(\d+)/);

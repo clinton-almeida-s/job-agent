@@ -463,34 +463,25 @@ async function scrapeLinkedInMumbai(keyword) {
  */
 async function scrapeAllSources(keywords) {
   const primaryKeyword = keywords[0]; // e.g. "GCP Engineer"
-  const searchTerms    = ['GCP Engineer', 'Cloud Architect', 'Platform Engineer', 'Google Cloud'];
+
+  // Consolidated search terms - each term is fetched once, results are later deduped
+  const remoteOkKeywords = keywords;
+  const remotiveTerms    = ['GCP', 'Google Cloud', 'BigQuery', 'Cloud Migration', 'Data Migration', 'Platform Engineer', 'Cloud Architect', 'Cloud Engineer'];
+  const weWorkTerms      = ['GCP', 'Google Cloud', 'Cloud Migration', 'Platform Engineer', 'Cloud Architect'];
+  const shineTerms       = ['GCP Engineer', 'Cloud Architect', 'Platform Engineer', 'Google Cloud'];
 
   const results = await Promise.allSettled([
-    scrapeRemoteOK(keywords),
-    // Remotive — working JSON API
-    scrapeRemotive('GCP'),
-    scrapeRemotive('Google Cloud'),
-    scrapeRemotive('BigQuery'),
-    scrapeRemotive('Cloud Migration'),
-    scrapeRemotive('Data Migration'),
-    scrapeRemotive('Platform Engineer'),
-    scrapeRemotive('Cloud Architect'),
-    scrapeRemotive('Cloud Engineer'),
-    // We Work Remotely — fixed URL + browser UA
-    scrapeWeWorkRemotely('GCP'),
-    scrapeWeWorkRemotely('Google Cloud'),
-    scrapeWeWorkRemotely('Cloud Migration'),
-    scrapeWeWorkRemotely('Platform Engineer'),
-    scrapeWeWorkRemotely('Cloud Architect'),
+    scrapeRemoteOK(remoteOkKeywords),
+    // Remotive — working JSON API (fetched once per term, deduped later)
+    ...remotiveTerms.map(term => scrapeRemotive(term)),
+    // We Work Remotely — fixed URL + browser UA (fetched once per term, deduped later)
+    ...weWorkTerms.map(term => scrapeWeWorkRemotely(term)),
     // LinkedIn — cookie attempt (needs LINKEDIN_COOKIES env), soft RSS fallback
     scrapeLinkedInCookie('GCP Engineer'),
     scrapeLinkedInCookie('Cloud Architect'),
     scrapeLinkedInRSS('GCP Engineer'),
     // Shine — Indian board (lightweight page scraping)
-    scrapeShine('GCP Engineer'),
-    scrapeShine('Cloud Architect'),
-    scrapeShine('Platform Engineer'),
-    scrapeShine('Google Cloud'),
+    ...shineTerms.map(term => scrapeShine(term)),
     // Removed broken/dead sources: Remote-Python, Startup.jobs, Remote-io, WorkRemoteLy,
     // LinkedIn Mumbai (dead URL pattern), Indeed (no public feed)
   ]);

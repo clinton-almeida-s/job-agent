@@ -52,10 +52,28 @@ function scoreJob(job) {
   const reasons = [];
   const warnings = [];
 
-  // 1. deal-breaker check
-  const breakers = containsAny(fullText, profile.deal_breakers);
+  // 1. deal-breaker check — only check title and company, not full description
+  // (descriptions often mention sales/marketing in context of tools used)
+  const textForDealBreakers = [job.title, job.company].join(' ');
+  const breakers = containsAny(textForDealBreakers, profile.deal_breakers);
+
+  // Smart blocking: if title has engineering keywords, don't block for sales/marketing mentions
+  // (e.g., "Sales Engineer" is valid, but "Sales Manager" is not)
+  const isTechnicalTitle = containsAny(job.title, ['engineer', 'architect', 'developer', 'technical', 'consultant']);
   if (breakers.length > 0) {
-    return { ...job, score: DEAL_BREAKER_PENALTY, match_reasons: [], warnings: [`Deal-breaker: ${breakers.join(', ')}`] };
+    const softBreakers = ['sales', 'marketing', 'business development', 'customer service', 'customer success'];
+    const hardBlockers = breakers.filter(b => !softBreakers.includes(b));
+
+    // Block immediately for hard deal-breakers
+    if (hardBlockers.length > 0) {
+      return { ...job, score: DEAL_BREAKER_PENALTY, match_reasons: [], warnings: [`Deal-breaker: ${hardBlockers.join(', ')}`] };
+    }
+
+    // For soft breakers, only block if title doesn't look technical
+    if (!isTechnicalTitle) {
+      return { ...job, score: DEAL_BREAKER_PENALTY, match_reasons: [], warnings: [`Deal-breaker: ${breakers.join(', ')}`] };
+    }
+    // If technical title, continue scoring (e.g., Sales Engineer is valid)
   }
 
   // 2. title match

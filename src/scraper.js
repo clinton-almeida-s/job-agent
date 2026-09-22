@@ -294,94 +294,97 @@ async function scrapeRemotive(keyword) {
 
 /**
  * Shine — Indian job board (lightweight page scraping)
+ * Note: Shine now blocks automated access; kept for future use
  */
 async function scrapeShine(keyword) {
   console.log('  Fetching Shine...');
-  try {
-    const url = `https://www.shine.com/job-search/jobs?key=${encodeURIComponent(keyword)}`;
-    const { status, body } = await fetch(url, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36');
-    if (status !== 200) return [];
-    const jobs = [];
-    // Shine renders job cards with title links; regex approach
-    const matches = body.match(/<a[^>]*href="(https:\/\/www\.shine\.com\/job-search\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi) || [];
-    for (let i = 0; i < Math.min(matches.length, 15); i++) {
-      const m = matches[i].match(/href="([^"]+)"/);
-      const url = m ? m[1].replace(/\s+/g, ' ').trim() : '';
-      const title = matches[i].replace(/<[^>]+>/g, '').trim().slice(0, 120);
-      if (!title || title.length < 5) continue;
-      jobs.push({
-        id: `shine-${Buffer.from(url || title + i).toString('base64').slice(0, 16)}`,
-        source: 'Shine',
-        title: cleanText(title),
-        company: '',
-        location: 'India / Remote',
-        remote: true,
-        description: '',
-        tags: '',
-        salary: '',
-        url: url || '',
-        posted_at: new Date().toISOString(),
-      });
-    }
-    return jobs;
-  } catch (e) {
-    console.warn(`  Shine error: ${e.message}`);
-    return [];
-  }
+  // Shine blocks automated scraping; return empty for now
+  return [];
 }
 
 /**
  * LinkedIn Cookie-based (needs user cookies from browser session)
- * To use: export LINKEDIN_COOKIES from your browser session (linked cookies)
- * Example: ANTHROPIC_API_KEY=... node -e "console.log(process.env.LINKEDIN_COOKIES)"
+ * To use: export LINKEDIN_COOKIES from your browser session
+ * See README for setup instructions
  */
 async function scrapeLinkedInCookie(keyword) {
   console.log('  Fetching LinkedIn (cookie-based)...');
   try {
     const cookieStr = process.env.LINKEDIN_COOKIES || '';
     if (!cookieStr || cookieStr.length < 20) {
-      console.log('     (LinkedIn cookie not set — set LINKEDIN_COOKIES env var to enable)');
+      console.log('     (LinkedIn cookie not set — set LINKEDIN_COOKIES env var to enable. See README for setup.)');
       return [];
     }
     const encoded = encodeURIComponent(keyword);
-    const url = `https://www.linkedin.com/jobs/search/?keywords=${encoded}&f_WT=2&f_JT=F&sortBy=DD`;
-    const { status, body } = await fetch(url, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', cookieStr);
-    if (status !== 200) return [];
-    // Try to extract job cards from HTML (lightweight regex)
-    const jobs = [];
-    // Look for job title links in HTML
-    const titleRe = /<a[^>]*href="([^"]*linkedin\.com\/jobs\/view[^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
-    let m;
-    while ((m = titleRe.exec(body)) !== null) {
-      const url = m[1].startsWith('http') ? m[1] : `https://www.linkedin.com${m[1]}`;
-      const title = cleanText(m[2]).slice(0, 120);
-      if (title && title.length > 3 && !title.toLowerCase().includes('cookie') && !title.toLowerCase().includes('privacy')) {
-        jobs.push({
-          id: `linkedin-cookie-${Buffer.from(url).toString('base64').slice(0, 16)}`,
-          source: 'LinkedIn',
-          title: title,
-          company: '',
-          location: 'Remote',
-          remote: true,
-          description: '',
-          tags: '',
-          salary: '',
-          url: url,
-          posted_at: new Date().toISOString(),
-        });
-      }
-    }
-    if (jobs.length === 0) {
-      // Fallback: try to extract from JSON embedded in page
-      const jsonMatch = body.match(/"data":(\{[\s\S]*?"jobs":[\s\S]*?\})/);
-      if (jsonMatch) {
+    // Search for Mumbai jobs with various filters
+    const urls = [
+      `https://www.linkedin.com/jobs/search?keywords=${encoded}&location=Mumbai&f_JT=F&sortBy=DD`,
+      `https://www.linkedin.com/jobs/search?keywords=${encoded}&location=Mumbai&f_WT=2&f_JT=F&sortBy=DD`,
+    ];
+
+    for (const url of urls) {
+      const { status, body } = await fetch(url, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', cookieStr);
+      if (status !== 200) continue;
+
+      // Extract job listings from JSON-LD script tags
+      const jobs = [];
+      const jsonLdMatches = body.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g);
+      for (const match of jsonLdMatches) {
         try {
-          const data = JSON.parse(jsonMatch[1]);
-          console.log('     (Found embedded LinkedIn job data, but parsing requires more structure)');
-        } catch (e) { /* ignore */ }
+          const json = JSON.parse(match[1]);
+          if (json['@graph'] && Array.isArray(json['@graph'])) {
+            json['@graph'].forEach(item => {
+              if (item['@type'] === 'JobPosting' && item.jobTitle) {
+                jobs.push({
+                  id: `linkedin-json-${Buffer.from(item.url || item.jobTitle).toString('base64').slice(0, 16)}`,
+                  source: 'LinkedIn',
+                  title: item.jobTitle || '',
+                  company: item.hiringOrganization?.name || '',
+                  location: item.workplaceLocation?.address || 'Mumbai, India',
+                  remote: item.jobLocationType === 'REMOTE',
+                  description: cleanText(item.description || ''),
+                  tags: (item.skills || '').join(', '),
+                  salary: item.baseSalary?.value?.minValue ? `$${item.baseSalary.value.minValue}` : '',
+                  url: item.url || '',
+                  posted_at: new Date(item.datePosted || Date.now()).toISOString(),
+                });
+              }
+            });
+          }
+        } catch (e) { /* ignore parse errors */ }
+      }
+
+      // Fallback: regex extraction
+      if (jobs.length === 0) {
+        const titleRe = /<a[^>]*href="([^"]*linkedin\.com\/jobs\/view[^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
+        let m;
+        while ((m = titleRe.exec(body)) !== null) {
+          const jobUrl = m[1].startsWith('http') ? m[1] : `https://www.linkedin.com${m[1]}`;
+          const title = cleanText(m[2]).slice(0, 120);
+          if (title && title.length > 3 && !title.toLowerCase().includes('cookie') && !title.toLowerCase().includes('privacy')) {
+            jobs.push({
+              id: `linkedin-regex-${Buffer.from(jobUrl).toString('base64').slice(0, 16)}`,
+              source: 'LinkedIn',
+              title: title,
+              company: '',
+              location: 'Mumbai, India',
+              remote: false,
+              description: '',
+              tags: '',
+              salary: '',
+              url: jobUrl,
+              posted_at: new Date().toISOString(),
+            });
+          }
+        }
+      }
+
+      if (jobs.length > 0) {
+        console.log(`     Found ${jobs.length} jobs`);
+        return jobs.slice(0, 30);
       }
     }
-    return jobs.slice(0, 20);
+    return [];
   } catch (e) {
     console.warn(`  LinkedIn cookie error: ${e.message}`);
     return [];
@@ -424,67 +427,23 @@ async function scrapeLinkedInRSS(keyword) {
 
 /**
  * Naukri.com RSS — free Indian job board
+ * Note: Naukri blocks direct RSS access; requires authentication
+ * Using alternative approach via job search pages
  */
 async function scrapeNaukri(keyword) {
   console.log('  Fetching Naukri...');
-  try {
-    // Naukri RSS feed format: https://www.naukri.com/job-search/rss/{keyword}_jobs/0-3.html
-    const encoded = encodeURIComponent(keyword);
-    const url = `https://www.naukri.com/job-search/rss/${encoded.replace(/\s+/g, '+')}_jobs/0-3.html`;
-    const { status, body } = await fetch(url, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
-    if (status !== 200) return [];
-    const parsed = await parseXML(body);
-    const items = parsed?.rss?.channel?.item || [];
-    const list = Array.isArray(items) ? items : [items];
-    return list.slice(0, 50).map((j, i) => ({
-      id:          `naukri-${Buffer.from(j.link || i.toString()).toString('base64').slice(0, 16)}`,
-      source:      'Naukri',
-      title:       cleanText(j.title || ''),
-      company:     cleanText(j['ns:company'] || ''),
-      location:    cleanText(j['ns:location'] || 'India'),
-      remote:      false,
-      description: cleanText(j.description || ''),
-      tags:        '',
-      salary:      cleanText(j['ns:salary'] || ''),
-      url:         j.link || '',
-      posted_at:   j.pubDate || new Date().toISOString(),
-    }));
-  } catch (e) {
-    console.warn(`  Naukri error: ${e.message}`);
-    return [];
-  }
+  // Naukri RSS is blocked; skip for now
+  return [];
 }
 
 /**
  * Indeed India RSS — free Indian job board
+ * Note: Indeed blocks RSS from scripts; using LinkedIn instead for Mumbai
  */
 async function scrapeIndeedIndia(keyword) {
   console.log('  Fetching Indeed India...');
-  try {
-    const encoded = encodeURIComponent(keyword);
-    const url = `https://in.indeed.com/jobs?q=${encoded}&l=Mumbai&sort=date&fromage=7&format=rss`;
-    const { status, body } = await fetch(url, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
-    if (status !== 200) return [];
-    const parsed = await parseXML(body);
-    const items = parsed?.rss?.channel?.item || [];
-    const list = Array.isArray(items) ? items : [items];
-    return list.slice(0, 50).map((j, i) => ({
-      id:          `indeed-${Buffer.from(j.link || i.toString()).toString('base64').slice(0, 16)}`,
-      source:      'Indeed-India',
-      title:       cleanText(j.title || ''),
-      company:     cleanText(j['indeed:company'] || ''),
-      location:    cleanText(j['indeed:location'] || 'Mumbai, India'),
-      remote:      false,
-      description: cleanText(j.description || ''),
-      tags:        '',
-      salary:      cleanText(j['indeed:salary'] || ''),
-      url:         j.link || '',
-      posted_at:   j.pubDate || new Date().toISOString(),
-    }));
-  } catch (e) {
-    console.warn(`  Indeed India error: ${e.message}`);
-    return [];
-  }
+  // Indeed blocks direct access; skip for now
+  return [];
 }
 
 /**
@@ -523,34 +482,61 @@ async function scrapeLinkedInMumbai(keyword) {
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 /**
- * Parse salary string like "₹35 LPA", "₹30-50 LPA", "$120k-$150k" and return min value
+ * Parse salary string and return min value in INR
+ * Handles: ₹35 LPA, $120k, $90-105k, hourly rates, etc.
  */
 function parseSalaryMin(salaryStr) {
   if (!salaryStr) return 0;
+  const s = salaryStr.trim();
+
   // Convert lakhs (L, LPA) to numeric
-  const inrMatch = salaryStr.match(/(\d+(?:\.\d+)?)\s*(?:LPA|L\s*PA|Lakhs?)/i);
+  const inrMatch = s.match(/(\d+(?:\.\d+)?)\s*(?:LPA|L\s*PA|Lakhs?)/i);
   if (inrMatch) {
     return parseFloat(inrMatch[1]) * 100000; // Convert to actual INR value
   }
   // Handle ranges like "₹30-50 LPA"
-  const rangeMatch = salaryStr.match(/(\d+)[\s-]*(\d+)\s*L/i);
+  const rangeMatch = s.match(/(\d+)[\s-]*(\d+)\s*L/i);
   if (rangeMatch) {
     return parseFloat(rangeMatch[1]) * 100000;
   }
-  // Handle USD values like "$120k"
-  const usdMatch = salaryStr.match(/\$(\d+)(?:k)?/i);
-  if (usdMatch) {
-    const usdValue = usdMatch[1].toLowerCase().endsWith('k')
-      ? parseInt(usdMatch[1]) * 1000
-      : parseInt(usdMatch[1]);
-    return usdValue * 83; // Rough INR conversion
+
+  // Check for hourly rate
+  const isHourly = s.toLowerCase().includes('/hour') || s.toLowerCase().includes('per hour');
+  if (isHourly) {
+    const hourlyMatch = s.match(/\$(\d+)/i);
+    if (hourlyMatch) {
+      const hourly = parseInt(hourlyMatch[1]);
+      // Annualize: hourly * 2080 (40hrs * 52weeks)
+      const annualUsd = hourly * 2080;
+      return annualUsd * 83; // Convert to INR
+    }
   }
-  // Handle plain numbers
-  const plainMatch = salaryStr.match(/(\d+)/);
+
+  // Handle USD values like "$120k" or "$90k - $105k" or "$120 - $170"
+  const usdMatch = s.match(/\$(\d+)(?:k)?/i);
+  if (usdMatch) {
+    const usdStr = usdMatch[1];
+    const isK = s.toLowerCase().includes('k');
+    let usdValue;
+
+    if (isK) {
+      // e.g., $90k = $90,000
+      usdValue = parseInt(usdStr) * 1000;
+    } else if (/\d{3,}/.test(usdStr)) {
+      // e.g., $120 = $120,000 (assume thousands for 3+ digit numbers)
+      usdValue = parseInt(usdStr) * 1000;
+    } else {
+      // e.g., $90 = $90/hour (handled above) or small annual salary
+      usdValue = parseInt(usdStr) * 1000; // Assume thousands
+    }
+    return usdValue * 83; // Convert to INR
+  }
+
+  // Handle plain numbers (assume lakhs if small)
+  const plainMatch = s.match(/(\d+)/);
   if (plainMatch) {
     const num = parseFloat(plainMatch[1]);
-    // If it's a small number like "35", assume lakhs
-    if (num < 100) return num * 100000;
+    if (num < 100) return num * 100000; // Assume lakhs
     return num;
   }
   return 0;
@@ -570,11 +556,9 @@ async function scrapeAllSources(keywords) {
   const remotiveTerms    = ['GCP', 'Google Cloud', 'BigQuery', 'Cloud Migration', 'Data Migration', 'Platform Engineer', 'Cloud Architect', 'Cloud Engineer'];
   const weWorkTerms      = ['GCP', 'Google Cloud', 'Cloud Migration', 'Platform Engineer', 'Cloud Architect'];
   const shineTerms       = ['GCP Engineer', 'Cloud Architect', 'Platform Engineer', 'Google Cloud'];
-  const naukriTerms      = ['GCP Engineer', 'Cloud Architect', 'Platform Engineer', 'Google Cloud', 'DevOps Engineer'];
-  const indeedTerms      = ['GCP Engineer', 'Cloud Architect', 'Platform Engineer', 'Google Cloud', 'DevOps Engineer'];
-
-  console.log('  Fetching Naukri...');
-  console.log('  Fetching Indeed India...');
+  const mumbaiTerms      = ['GCP Engineer', 'Cloud Architect', 'Platform Engineer', 'Google Cloud'];
+  // Note: Indian job sites (Naukri, Shine, Indeed) block direct RSS/API access.
+  // For Mumbai jobs, use LinkedIn cookie-based scraping (see LINKEDIN_COOKIES env var).
 
   const results = await Promise.allSettled([
     scrapeRemoteOK(remoteOkKeywords),
@@ -588,10 +572,8 @@ async function scrapeAllSources(keywords) {
     scrapeLinkedInRSS('GCP Engineer'),
     // Indian job boards — Shine, Naukri, Indeed
     ...shineTerms.map(term => scrapeShine(term)),
-    ...naukriTerms.map(term => scrapeNaukri(term)),
-    ...indeedTerms.map(term => scrapeIndeedIndia(term)),
-    // Mumbai hybrid jobs
-    scrapeLinkedInMumbai('GCP Engineer'),
+    // Mumbai hybrid jobs via LinkedIn (more reliable than Naukri/Indeed RSS)
+    ...mumbaiTerms.map(term => scrapeLinkedInMumbai(term)),
     // Removed broken/dead sources: Remote-Python, Startup.jobs, Remote-io, WorkRemoteLy,
     // LinkedIn Mumbai (dead URL pattern)
   ]);

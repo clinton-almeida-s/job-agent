@@ -111,9 +111,9 @@
   "preferred_employment": ["permanent", "full-time", "full time"],
 
   "target_salary": {
-    "currency": "USD",
-    "min": 120000,
-    "note": "Update this based on your expectations"
+    "currency": "INR",
+    "min_lakhs": 35,
+    "note": "Minimum annual CTC requirement"
   },
 
   "summary": "Google Cloud Platform Architect with over 12 years of experience designing, migrating, and optimizing cloud platforms. Specializing in GCP, infrastructure automation, and middleware administration. Google Professional Cloud Architect Certified, GCP Associate Cloud Engineer Certified, ITIL Foundation holder.",

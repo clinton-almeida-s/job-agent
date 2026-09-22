@@ -1,6 +1,6 @@
 /**
  * Job Scraper — fetches listings from multiple job boards
- * Sources: RemoteOK, We Work Remotely, Remotive, LinkedIn RSS, Indeed RSS
+ * Sources: RemoteOK, We Work Remotely, Remotive, LinkedIn RSS, Naukri, Indeed India
  */
 
 const https = require('https');
@@ -423,14 +423,79 @@ async function scrapeLinkedInRSS(keyword) {
 }
 
 /**
+ * Naukri.com RSS — free Indian job board
+ */
+async function scrapeNaukri(keyword) {
+  console.log('  Fetching Naukri...');
+  try {
+    // Naukri RSS feed format: https://www.naukri.com/job-search/rss/{keyword}_jobs/0-3.html
+    const encoded = encodeURIComponent(keyword);
+    const url = `https://www.naukri.com/job-search/rss/${encoded.replace(/\s+/g, '+')}_jobs/0-3.html`;
+    const { status, body } = await fetch(url, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+    if (status !== 200) return [];
+    const parsed = await parseXML(body);
+    const items = parsed?.rss?.channel?.item || [];
+    const list = Array.isArray(items) ? items : [items];
+    return list.slice(0, 50).map((j, i) => ({
+      id:          `naukri-${Buffer.from(j.link || i.toString()).toString('base64').slice(0, 16)}`,
+      source:      'Naukri',
+      title:       cleanText(j.title || ''),
+      company:     cleanText(j['ns:company'] || ''),
+      location:    cleanText(j['ns:location'] || 'India'),
+      remote:      false,
+      description: cleanText(j.description || ''),
+      tags:        '',
+      salary:      cleanText(j['ns:salary'] || ''),
+      url:         j.link || '',
+      posted_at:   j.pubDate || new Date().toISOString(),
+    }));
+  } catch (e) {
+    console.warn(`  Naukri error: ${e.message}`);
+    return [];
+  }
+}
+
+/**
+ * Indeed India RSS — free Indian job board
+ */
+async function scrapeIndeedIndia(keyword) {
+  console.log('  Fetching Indeed India...');
+  try {
+    const encoded = encodeURIComponent(keyword);
+    const url = `https://in.indeed.com/jobs?q=${encoded}&l=Mumbai&sort=date&fromage=7&format=rss`;
+    const { status, body } = await fetch(url, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+    if (status !== 200) return [];
+    const parsed = await parseXML(body);
+    const items = parsed?.rss?.channel?.item || [];
+    const list = Array.isArray(items) ? items : [items];
+    return list.slice(0, 50).map((j, i) => ({
+      id:          `indeed-${Buffer.from(j.link || i.toString()).toString('base64').slice(0, 16)}`,
+      source:      'Indeed-India',
+      title:       cleanText(j.title || ''),
+      company:     cleanText(j['indeed:company'] || ''),
+      location:    cleanText(j['indeed:location'] || 'Mumbai, India'),
+      remote:      false,
+      description: cleanText(j.description || ''),
+      tags:        '',
+      salary:      cleanText(j['indeed:salary'] || ''),
+      url:         j.link || '',
+      posted_at:   j.pubDate || new Date().toISOString(),
+    }));
+  } catch (e) {
+    console.warn(`  Indeed India error: ${e.message}`);
+    return [];
+  }
+}
+
+/**
  * LinkedIn - Mumbai jobs RSS (specific location)
  */
 async function scrapeLinkedInMumbai(keyword) {
   console.log('  Fetching LinkedIn Mumbai RSS...');
   try {
     const encoded = encodeURIComponent(keyword);
-    // f_WT=2 = remote, f_CC=105847 = Mumbai
-    const url = `https://www.linkedin.com/jobs/search/?keywords=${encoded}&f_WT=2&f_JT=F&f_CC=105847&sortBy=DD&format=rss`;
+    // f_WT=2 = remote, f_CC=105847 = Mumbai, f_WFH=3 = hybrid
+    const url = `https://www.linkedin.com/jobs/search/?keywords=${encoded}&f_CC=105847&f_JT=F&sortBy=DD&format=rss`;
     const { status, body } = await fetch(url);
     if (status !== 200) return [];
     const parsed = await parseXML(body);
@@ -455,6 +520,42 @@ async function scrapeLinkedInMumbai(keyword) {
   }
 }
 
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Parse salary string like "₹35 LPA", "₹30-50 LPA", "$120k-$150k" and return min value
+ */
+function parseSalaryMin(salaryStr) {
+  if (!salaryStr) return 0;
+  // Convert lakhs (L, LPA) to numeric
+  const inrMatch = salaryStr.match(/(\d+(?:\.\d+)?)\s*(?:LPA|L\s*PA|Lakhs?)/i);
+  if (inrMatch) {
+    return parseFloat(inrMatch[1]) * 100000; // Convert to actual INR value
+  }
+  // Handle ranges like "₹30-50 LPA"
+  const rangeMatch = salaryStr.match(/(\d+)[\s-]*(\d+)\s*L/i);
+  if (rangeMatch) {
+    return parseFloat(rangeMatch[1]) * 100000;
+  }
+  // Handle USD values like "$120k"
+  const usdMatch = salaryStr.match(/\$(\d+)(?:k)?/i);
+  if (usdMatch) {
+    const usdValue = usdMatch[1].toLowerCase().endsWith('k')
+      ? parseInt(usdMatch[1]) * 1000
+      : parseInt(usdMatch[1]);
+    return usdValue * 83; // Rough INR conversion
+  }
+  // Handle plain numbers
+  const plainMatch = salaryStr.match(/(\d+)/);
+  if (plainMatch) {
+    const num = parseFloat(plainMatch[1]);
+    // If it's a small number like "35", assume lakhs
+    if (num < 100) return num * 100000;
+    return num;
+  }
+  return 0;
+}
+
 // ── main export ───────────────────────────────────────────────────────────────
 
 /**
@@ -469,6 +570,11 @@ async function scrapeAllSources(keywords) {
   const remotiveTerms    = ['GCP', 'Google Cloud', 'BigQuery', 'Cloud Migration', 'Data Migration', 'Platform Engineer', 'Cloud Architect', 'Cloud Engineer'];
   const weWorkTerms      = ['GCP', 'Google Cloud', 'Cloud Migration', 'Platform Engineer', 'Cloud Architect'];
   const shineTerms       = ['GCP Engineer', 'Cloud Architect', 'Platform Engineer', 'Google Cloud'];
+  const naukriTerms      = ['GCP Engineer', 'Cloud Architect', 'Platform Engineer', 'Google Cloud', 'DevOps Engineer'];
+  const indeedTerms      = ['GCP Engineer', 'Cloud Architect', 'Platform Engineer', 'Google Cloud', 'DevOps Engineer'];
+
+  console.log('  Fetching Naukri...');
+  console.log('  Fetching Indeed India...');
 
   const results = await Promise.allSettled([
     scrapeRemoteOK(remoteOkKeywords),
@@ -480,10 +586,14 @@ async function scrapeAllSources(keywords) {
     scrapeLinkedInCookie('GCP Engineer'),
     scrapeLinkedInCookie('Cloud Architect'),
     scrapeLinkedInRSS('GCP Engineer'),
-    // Shine — Indian board (lightweight page scraping)
+    // Indian job boards — Shine, Naukri, Indeed
     ...shineTerms.map(term => scrapeShine(term)),
+    ...naukriTerms.map(term => scrapeNaukri(term)),
+    ...indeedTerms.map(term => scrapeIndeedIndia(term)),
+    // Mumbai hybrid jobs
+    scrapeLinkedInMumbai('GCP Engineer'),
     // Removed broken/dead sources: Remote-Python, Startup.jobs, Remote-io, WorkRemoteLy,
-    // LinkedIn Mumbai (dead URL pattern), Indeed (no public feed)
+    // LinkedIn Mumbai (dead URL pattern)
   ]);
 
   const all = results
@@ -500,4 +610,4 @@ async function scrapeAllSources(keywords) {
   });
 }
 
-module.exports = { scrapeAllSources, scrapeLinkedInRSS, scrapeLinkedInMumbai, scrapeShine, scrapeLinkedInCookie };
+module.exports = { scrapeAllSources, scrapeLinkedInRSS, scrapeLinkedInMumbai, scrapeShine, scrapeLinkedInCookie, scrapeNaukri, scrapeIndeedIndia, parseSalaryMin };

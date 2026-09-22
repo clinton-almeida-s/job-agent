@@ -4,6 +4,7 @@
  */
 
 const profile = require('../profile.json');
+const { parseSalaryMin } = require('./scraper');
 
 // ── scoring constants ─────────────────────────────────────────────────────────
 
@@ -12,9 +13,11 @@ const ENGINEER_TITLE_SCORE  = 30;   // job has "Engineer" or "Architect" in titl
 const REQUIRED_KW_SCORE     = 20;   // per required keyword (increased for better relevance)
 const BONUS_KW_SCORE        = 5;    // per bonus keyword found
 const REMOTE_SCORE          = 20;   // confirmed remote role
+const HYBRID_SCORE          = 10;   // hybrid work option
 const RECENCY_SCORE         = 15;   // posted within last 7 days
 const DEAL_BREAKER_PENALTY  = -999; // instant disqualify
 const MIN_SCORE_THRESHOLD   = 15;   // lowered from 30 to surface more matching jobs
+const SALARY_MIN_LAKHS      = profile.target_salary?.min_lakhs || 35; // Minimum salary requirement
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -27,7 +30,7 @@ function containsAny(text, keywords) {
   return keywords.filter(kw => {
     const n = normalize(kw);
     // word-boundary match to avoid partial hits (e.g., "contract" in "contractor")
-    const regex = new RegExp('\\\\b' + n.replace(/[.*+?^${}()|[\]\\\\]/g, '\\\\$&') + '\\\\b', 'i');
+    const regex = new RegExp('\\b' + n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
     return regex.test(t);
   });
 }
@@ -97,15 +100,31 @@ function scoreJob(job) {
     containsAny(fullText, ['remote', 'work from home', 'wfh']).length > 0;
 
   const isMumbai = containsAny(job.location + ' ' + fullText, ['mumbai']);
+  const isHybrid = normalize(job.location).includes('hybrid') ||
+    containsAny(fullText, ['hybrid']).length > 0;
 
   if (isRemote) {
     score += REMOTE_SCORE;
     reasons.push('Remote confirmed');
+  } else if (isHybrid && isMumbai) {
+    score += HYBRID_SCORE;
+    reasons.push('Hybrid role in Mumbai');
   } else if (isMumbai) {
     score += REMOTE_SCORE;
     reasons.push('Location match: Mumbai');
   } else {
     warnings.push('Not remote and not in Mumbai — verify location before applying');
+  }
+
+  // 6. Salary filtering
+  const salaryMin = parseSalaryMin(job.salary);
+  const minSalaryRequired = SALARY_MIN_LAKHS * 100000;
+  if (salaryMin > 0 && salaryMin < minSalaryRequired) {
+    return { ...job, score: DEAL_BREAKER_PENALTY, match_reasons: [], warnings: [`Salary below threshold: ${job.salary} (min ₹${SALARY_MIN_LAKHS} LPA)`] };
+  }
+  if (salaryMin >= minSalaryRequired) {
+    score += 10;
+    reasons.push(`Salary meets requirement: ${job.salary}`);
   }
 
   // 6. recency bonus

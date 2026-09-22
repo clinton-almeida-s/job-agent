@@ -75,12 +75,12 @@ function scoreJob(job) {
     const isEngineerArchitect = containsAny(job.title, ['engineer', 'architect', 'platform', 'infrastructure', 'sre', 'devops', 'ops', 'support']);
     const isCloudRelated = containsAny(fullText, ['cloud', 'gcp', 'google cloud', 'aws', 'azure', 'migration', 'bigquery']);
 
-    if (isEngineerArchitect) {
+    if (isEngineerArchitect && isCloudRelated) {
       score += ENGINEER_TITLE_SCORE;
       reasons.push('Cloud engineering role');
     } else if (isCloudRelated) {
       score += 15;
-      reasons.push('Cloud-related title');
+      reasons.push('Cloud-related content');
     }
   }
 

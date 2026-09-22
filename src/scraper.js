@@ -451,32 +451,61 @@ async function scrapeLinkedInMumbai(keyword) {
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 /**
- * Parse salary string like "₹35 LPA", "₹30-50 LPA", "$120k-$150k" and return min value
+ * Parse salary string and return min value in INR
+ * Handles: ₹35 LPA, $120k, $90-105k, hourly rates, etc.
  */
 function parseSalaryMin(salaryStr) {
   if (!salaryStr) return 0;
+  const s = salaryStr.trim();
+
   // Convert lakhs (L, LPA) to numeric
-  const inrMatch = salaryStr.match(/(\d+(?:\.\d+)?)\s*(?:LPA|L\s*PA|Lakhs?)/i);
+  const inrMatch = s.match(/(\d+(?:\.\d+)?)\s*(?:LPA|L\s*PA|Lakhs?)/i);
   if (inrMatch) {
     return parseFloat(inrMatch[1]) * 100000; // Convert to actual INR value
   }
   // Handle ranges like "₹30-50 LPA"
-  const rangeMatch = salaryStr.match(/(\d+)[\s-]*(\d+)\s*L/i);
+  const rangeMatch = s.match(/(\d+)[\s-]*(\d+)\s*L/i);
   if (rangeMatch) {
     return parseFloat(rangeMatch[1]) * 100000;
   }
-  // Handle USD values like "$120k" or "$90k - $105k"
-  const usdMatch = salaryStr.match(/\$(\d+)\s*k/i);
-  if (usdMatch) {
-    const usdValue = parseInt(usdMatch[1]) * 1000;
-    return usdValue * 83; // Convert to INR (approx 83 INR per USD)
+
+  // Check for hourly rate
+  const isHourly = s.toLowerCase().includes('/hour') || s.toLowerCase().includes('per hour');
+  if (isHourly) {
+    const hourlyMatch = s.match(/\$(\d+)/i);
+    if (hourlyMatch) {
+      const hourly = parseInt(hourlyMatch[1]);
+      // Annualize: hourly * 2080 (40hrs * 52weeks)
+      const annualUsd = hourly * 2080;
+      return annualUsd * 83; // Convert to INR
+    }
   }
-  // Handle plain numbers
-  const plainMatch = salaryStr.match(/(\d+)/);
+
+  // Handle USD values like "$120k" or "$90k - $105k" or "$120 - $170"
+  const usdMatch = s.match(/\$(\d+)(?:k)?/i);
+  if (usdMatch) {
+    const usdStr = usdMatch[1];
+    const isK = s.toLowerCase().includes('k');
+    let usdValue;
+
+    if (isK) {
+      // e.g., $90k = $90,000
+      usdValue = parseInt(usdStr) * 1000;
+    } else if (/\d{3,}/.test(usdStr)) {
+      // e.g., $120 = $120,000 (assume thousands for 3+ digit numbers)
+      usdValue = parseInt(usdStr) * 1000;
+    } else {
+      // e.g., $90 = $90/hour (handled above) or small annual salary
+      usdValue = parseInt(usdStr) * 1000; // Assume thousands
+    }
+    return usdValue * 83; // Convert to INR
+  }
+
+  // Handle plain numbers (assume lakhs if small)
+  const plainMatch = s.match(/(\d+)/);
   if (plainMatch) {
     const num = parseFloat(plainMatch[1]);
-    // If it's a small number like "35", assume lakhs
-    if (num < 100) return num * 100000;
+    if (num < 100) return num * 100000; // Assume lakhs
     return num;
   }
   return 0;
